@@ -66,18 +66,6 @@ aws s3 website $destination_bucket_uri --index-document index.html --error-docum
 echo "Synchronizing to $destination_bucket_uri..."
 aws s3 sync "$build_dir" "$destination_bucket_uri" --acl public-read --delete --quiet --region "$(aws_region)"
 
-if [[ "$1" == "update" ]]; then
-    # We host the bundle files in a separate bucket that `/css` and `js` routes to to enable managing the bundles
-    # generated from both the docs and hugo repos.
-    bundleBucket=$(pulumi -C infrastructure stack output bundlesS3BucketName)
-    # Upload the CSS/JS bundle files to the bundles bucket.
-    echo "Syncing CSS files to the bundles bucket"
-    aws s3 cp "${build_dir}/css/" "s3://${bundleBucket}/css/" --acl public-read  --content-type "text/css" --region "$(aws_region)" --recursive
-
-    echo "Syncing JS files to the bundles bucket"
-    aws s3 cp "${build_dir}/js/" "s3://${bundleBucket}/js/" --acl public-read  --content-type "text/javascript" --region "$(aws_region)" --recursive
-fi
-
 echo "Sync complete."
 s3_website_url="http://${destination_bucket}.s3-website.$(aws_region).amazonaws.com"
 echo "$s3_website_url"
@@ -123,11 +111,11 @@ set_bucket_for_commit "$(git_sha)" "$destination_bucket" "$(aws_region)"
 aws s3api put-bucket-cors --bucket "$destination_bucket" --cors-configuration "file://scripts/cors/cors.json" --region "$(aws_region)"
 
 # Finally, if it's a preview, post a comment to the PR that directs the user to the resulting bucket URL.
-if [[ "$1" == "preview" ]]; then
-    pr_comment_api_url="$(cat "$GITHUB_EVENT_PATH" | jq -r ".pull_request._links.comments.href")"
-    post_github_pr_comment \
-        "Your site preview for commit $(git_sha_short) is ready! :tada:\n\n${s3_website_url}." \
-        $pr_comment_api_url
-fi
+# if [[ "$1" == "preview" ]]; then
+#     pr_comment_api_url="$(cat "$GITHUB_EVENT_PATH" | jq -r ".pull_request._links.comments.href")"
+#     post_github_pr_comment \
+#         "Your site preview for commit $(git_sha_short) is ready! :tada:\n\n${s3_website_url}." \
+#         $pr_comment_api_url
+# fi
 
 echo "Done! The bucket website is now built and available at ${s3_website_url}."
