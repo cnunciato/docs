@@ -51,8 +51,8 @@ const config = {
     registryStack: stackConfig.get("registryStack"),
 };
 
-const aiAppStack = new pulumi.StackReference('pulumi/pulumi-ai-app-infra/prod');
-const aiAppDomain = aiAppStack.requireOutput('aiAppDistributionDomain');
+// const aiAppStack = new pulumi.StackReference('pulumi/pulumi-ai-app-infra/prod');
+// const aiAppDomain = aiAppStack.requireOutput('aiAppDistributionDomain');
 
 // originBucketName is the name of the S3 bucket to use as the CloudFront origin for the
 // website. This bucket is presumed to exist prior to the Pulumi run; if it doesn't, this
@@ -117,30 +117,30 @@ const uploadsBucketAcl = new aws.s3.BucketAclV2("uploads-bucket-acl", {
     dependsOn: [uploadsBucketPublicAccessBlock, uploadsBucketOwnershipControls],
 });
 
-const bundlesBucket = new aws.s3.Bucket("bundles-bucket", {
-    website: {
-        indexDocument: "index.html",
-    },
-});
+// const bundlesBucket = new aws.s3.Bucket("bundles-bucket", {
+//     website: {
+//         indexDocument: "index.html",
+//     },
+// });
 
-const bundlesBucketPublicAccessBlock = new aws.s3.BucketPublicAccessBlock("bundles-public-access-block", {
-    bucket: bundlesBucket.id,
-    blockPublicAcls: false,
-});
+// const bundlesBucketPublicAccessBlock = new aws.s3.BucketPublicAccessBlock("bundles-public-access-block", {
+//     bucket: bundlesBucket.id,
+//     blockPublicAcls: false,
+// });
 
-const bundlesBucketOwnershipControls = new aws.s3.BucketOwnershipControls("bundles-bucket-ownership-controls", {
-    bucket: bundlesBucket.id,
-    rule: {
-        objectOwnership: "ObjectWriter"
-    }
-});
+// const bundlesBucketOwnershipControls = new aws.s3.BucketOwnershipControls("bundles-bucket-ownership-controls", {
+//     bucket: bundlesBucket.id,
+//     rule: {
+//         objectOwnership: "ObjectWriter"
+//     }
+// });
 
-const bundlesBucketAcl = new aws.s3.BucketAclV2("bundles-bucket-acl", {
-    bucket: bundlesBucket.id,
-    acl: aws.s3.PublicReadAcl,
-}, {
-    dependsOn: [bundlesBucketPublicAccessBlock, bundlesBucketOwnershipControls],
-});
+// const bundlesBucketAcl = new aws.s3.BucketAclV2("bundles-bucket-acl", {
+//     bucket: bundlesBucket.id,
+//     acl: aws.s3.PublicReadAcl,
+// }, {
+//     dependsOn: [bundlesBucketPublicAccessBlock, bundlesBucketOwnershipControls],
+// });
 
 // Optionally create a fallback bucket for serving the website directly out of S3 when necessary.
 // https://docs.aws.amazon.com/AmazonS3/latest/userguide/website-hosting-custom-domain-walkthrough.html
@@ -295,54 +295,54 @@ if (config.registryStack) {
     const registryCDN = registryStack.getOutput("cloudFrontDomain");
 
     bundleOrigins.push(
-        {
-            originId: bundlesBucket.arn,
-            domainName: bundlesBucket.websiteEndpoint,
-            customOriginConfig: {
-                originProtocolPolicy: "http-only",
-                httpPort: 80,
-                httpsPort: 443,
-                originSslProtocols: ["TLSv1.2"],
-            }
-        }
+        // {
+        //     originId: bundlesBucket.arn,
+        //     domainName: bundlesBucket.websiteEndpoint,
+        //     customOriginConfig: {
+        //         originProtocolPolicy: "http-only",
+        //         httpPort: 80,
+        //         httpsPort: 443,
+        //         originSslProtocols: ["TLSv1.2"],
+        //     }
+        // }
     );
     bundleBehaviors.push(
-        {
-            ...baseCacheBehavior,
-            targetOriginId: bundlesBucket.arn,
-            pathPattern: "/css/*",
-            defaultTtl: oneHour,
-            maxTtl: oneHour,
-            forwardedValues: {
-                cookies: {
-                    forward: "none",
-                },
-                queryString: false,
-                headers: [
-                    "Origin",
-                    "Access-Control-Request-Headers",
-                    "Access-Control-Request-Method",
-                ],
-            },
-        },
-        {
-            ...baseCacheBehavior,
-            targetOriginId: bundlesBucket.arn,
-            pathPattern: "/js/*",
-            defaultTtl: oneHour,
-            maxTtl: oneHour,
-            forwardedValues: {
-                cookies: {
-                    forward: "none",
-                },
-                queryString: false,
-                headers: [
-                    "Origin",
-                    "Access-Control-Request-Headers",
-                    "Access-Control-Request-Method",
-                ],
-            },
-        }
+        // {
+        //     ...baseCacheBehavior,
+        //     targetOriginId: bundlesBucket.arn,
+        //     pathPattern: "/css/*",
+        //     defaultTtl: oneHour,
+        //     maxTtl: oneHour,
+        //     forwardedValues: {
+        //         cookies: {
+        //             forward: "none",
+        //         },
+        //         queryString: false,
+        //         headers: [
+        //             "Origin",
+        //             "Access-Control-Request-Headers",
+        //             "Access-Control-Request-Method",
+        //         ],
+        //     },
+        // },
+        // {
+        //     ...baseCacheBehavior,
+        //     targetOriginId: bundlesBucket.arn,
+        //     pathPattern: "/js/*",
+        //     defaultTtl: oneHour,
+        //     maxTtl: oneHour,
+        //     forwardedValues: {
+        //         cookies: {
+        //             forward: "none",
+        //         },
+        //         queryString: false,
+        //         headers: [
+        //             "Origin",
+        //             "Access-Control-Request-Headers",
+        //             "Access-Control-Request-Method",
+        //         ],
+        //     },
+        // }
     );
     registryOrigins.push(
         {
@@ -419,16 +419,16 @@ const distributionArgs: aws.cloudfront.DistributionArgs = {
                 originSslProtocols: ["TLSv1.2"],
             },
         },
-        {
-            originId: aiAppDomain,
-            domainName: aiAppDomain,
-            customOriginConfig: {
-                originProtocolPolicy: "https-only",
-                httpPort: 80,
-                httpsPort: 443,
-                originSslProtocols: ["TLSv1.2"],
-            },
-        },
+        // {
+        //     originId: aiAppDomain,
+        //     domainName: aiAppDomain,
+        //     customOriginConfig: {
+        //         originProtocolPolicy: "https-only",
+        //         httpPort: 80,
+        //         httpsPort: 443,
+        //         originSslProtocols: ["TLSv1.2"],
+        //     },
+        // },
         ...registryOrigins,
         // Add css bucket origins. These will be empty in the current production flow.
         ...bundleOrigins
@@ -564,32 +564,32 @@ const distributionArgs: aws.cloudfront.DistributionArgs = {
         },
 
         // AI app with caching handled by the app
-        {
-            ...baseCacheBehavior,
-            // allow all methods
-            allowedMethods: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
-            cachedMethods: [
-                "GET", "HEAD", "OPTIONS",
-            ],
-            targetOriginId: aiAppDomain,
-            pathPattern: '/ai',
-            originRequestPolicyId: allViewerExceptHostHeaderId,
-            cachePolicyId: cachingDisabledId,
-            forwardedValues: undefined, // forwardedValues conflicts with cachePolicyId, so we unset it.
-        },
-        {
-            ...baseCacheBehavior,
-            // allow all methods
-            allowedMethods: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
-            cachedMethods: [
-                "GET", "HEAD", "OPTIONS",
-            ],
-            targetOriginId: aiAppDomain,
-            pathPattern: '/ai/*',
-            originRequestPolicyId: allViewerExceptHostHeaderId,
-            cachePolicyId: cachingDisabledId,
-            forwardedValues: undefined, // forwardedValues conflicts with cachePolicyId, so we unset it.
-        }
+        // {
+        //     ...baseCacheBehavior,
+        //     // allow all methods
+        //     allowedMethods: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
+        //     cachedMethods: [
+        //         "GET", "HEAD", "OPTIONS",
+        //     ],
+        //     targetOriginId: aiAppDomain,
+        //     pathPattern: '/ai',
+        //     originRequestPolicyId: allViewerExceptHostHeaderId,
+        //     cachePolicyId: cachingDisabledId,
+        //     forwardedValues: undefined, // forwardedValues conflicts with cachePolicyId, so we unset it.
+        // },
+        // {
+        //     ...baseCacheBehavior,
+        //     // allow all methods
+        //     allowedMethods: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
+        //     cachedMethods: [
+        //         "GET", "HEAD", "OPTIONS",
+        //     ],
+        //     targetOriginId: aiAppDomain,
+        //     pathPattern: '/ai/*',
+        //     originRequestPolicyId: allViewerExceptHostHeaderId,
+        //     cachePolicyId: cachingDisabledId,
+        //     forwardedValues: undefined, // forwardedValues conflicts with cachePolicyId, so we unset it.
+        // }
     ],
 
     // "All" is the most broad distribution, and also the most expensive.
@@ -693,4 +693,4 @@ export const originBucketWebsiteEndpoint = originBucket.websiteEndpoint;
 export const cloudFrontDomain = cdn.domainName;
 export const websiteDomain = config.websiteDomain;
 export const originS3BucketName = originBucket.bucket;
-export const bundlesS3BucketName = bundlesBucket.bucket;
+// export const bundlesS3BucketName = bundlesBucket.bucket;

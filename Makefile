@@ -18,6 +18,10 @@ clean:
 ensure: clean
 	./scripts/ensure.sh
 
+.PHONY: deploy-setup
+deploy-setup:
+	./scripts/deploy-setup.sh
+
 .PHONY: serve
 serve:
 	./scripts/serve.sh
