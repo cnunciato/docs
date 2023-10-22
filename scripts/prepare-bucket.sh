@@ -18,15 +18,11 @@ eval $(pulumi env open "${PULUMI_ESC_ENVIRONMENT}" --format shell)
 echo "Selecting the '${PULUMI_STACK_NAME}' stack..."
 pulumi -C infrastructure stack select "${PULUMI_STACK_NAME}"
 
-# Install deps.
-./scripts/clean.sh
-./scripts/ensure.sh
-
 # Build the site.
 ./scripts/build-site.sh
 
 # Create a new bucket and push files to it.
-./scripts/sync-and-test-bucket.sh update
+./scripts/sync-and-test-bucket.sh
 
 # Generate a search index.
 ./scripts/generate-search-index.sh

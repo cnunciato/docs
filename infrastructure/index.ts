@@ -2,6 +2,7 @@
 
 import * as aws from "@pulumi/aws";
 import * as pulumi from "@pulumi/pulumi";
+import * as command from "@pulumi/command";
 import * as fs from "fs";
 
 import { getLambdaFunctionAssociations } from "./cloudfrontLambdaAssociations";
@@ -54,32 +55,27 @@ const config = {
     registryStack: stackConfig.get("registryStack"),
 };
 
-// originBucketName is the name of the S3 bucket to use as the CloudFront origin for the
-// website. This bucket is presumed to exist prior to the Pulumi run; if it doesn't, this
-// program will fail.
-export let originBucketName: string | undefined;
+// Build and push the site to an S3 bucket, dropping off a metadata file when that completes.
+export const originBucketName = pulumi.output(command.local.run({
+    dir: "../",
+    command: "./scripts/prepare-bucket.sh",
+    assetPaths: [
+        config.pathToOriginBucketMetadata,
+    ]
+})).apply(result => {
+    const metadataFilePath = result.assetPaths?.at(0);
 
-// If a build metadata file is present and contains valid content, use that for the bucket
-// name by default. Will fail if there's a file present that isn't parsable as expected.
-if (fs.existsSync(config.pathToOriginBucketMetadata)) {
-    originBucketName = JSON.parse(fs.readFileSync(config.pathToOriginBucketMetadata).toString()).bucket;
-}
+    if (metadataFilePath && fs.existsSync(metadataFilePath)) {
+        return JSON.parse(fs.readFileSync(metadataFilePath).toString()).bucket as string;
+    }
 
-// However, if the bucket's been configured manually, use that instead. A manually
-// configured bucket means that someone's decided to pin it.
-if (config.originBucketNameOverride) {
-    originBucketName = config.originBucketNameOverride;
-}
-
-// If there's still no bucket selected, it's an error.
-if (!originBucketName) {
-    throw new Error("An origin bucket was not specified.");
-}
+    throw new Error("An origin bucket metadata file was not found.");
+});
 
 // Fetch the bucket we'll use for the preview or update.
-const originBucket = pulumi.output(aws.s3.getBucket({
+const originBucket = aws.s3.getBucketOutput({
     bucket: originBucketName,
-}));
+});
 
 // Create a bucket to store files we do not keep in source control.
 const uploadsBucket = new aws.s3.Bucket("uploads-bucket", {
@@ -196,7 +192,7 @@ const logsBucketDeliveryACL = new aws.s3.BucketAclV2("logs-bucket-delivery-acl",
         grants: [
             {
                 grantee: {
-                    // The canconical ID for the `awslogsdelivery` account.
+                    // The canonical ID for the `awslogsdelivery` account.
                     // see: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/AccessLogs.html#AccessLogsOverview
                     id: "c4c1ede66af53448b93c283ce9448c4ba468c9432aa01d700d3878632f77d2d0",
                     type: "CanonicalUser",
@@ -211,8 +207,6 @@ const logsBucketDeliveryACL = new aws.s3.BucketAclV2("logs-bucket-delivery-acl",
 }, {
     dependsOn: [logsBucketOwnershipControls],
 });
-
-
 
 const fiveMinutes = 60 * 5;
 const oneHour = fiveMinutes * 12;
@@ -236,9 +230,7 @@ const cachingDisabledId = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad";
 const baseCacheBehavior = {
     targetOriginId: originBucket.arn,
     compress: true,
-
     viewerProtocolPolicy: "redirect-to-https",
-
     allowedMethods: ["GET", "HEAD", "OPTIONS"],
     cachedMethods: ["GET", "HEAD", "OPTIONS"],
 
@@ -253,7 +245,6 @@ const baseCacheBehavior = {
     minTtl: 0,
     defaultTtl: fiveMinutes,
     maxTtl: fiveMinutes,
-
     lambdaFunctionAssociations,
 
     // https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-response-headers-policies.html#managed-response-headers-policies-security
@@ -293,8 +284,6 @@ if (config.registryStack) {
         },
     )
 }
-
-
 
 // domainAliases is a list of CNAMEs that accompany the CloudFront distribution. Any
 const domainAliases = [];
@@ -619,9 +608,8 @@ async function createAliasRecord(
 [...new Set(domainAliases)].map(alias => createAliasRecord(alias, cdn));
 
 export const uploadsBucketName = uploadsBucket.bucket;
-export const originBucketWebsiteDomain = originBucket.websiteDomain;
+export const originBucketoriginBucketWebsiteDomain = originBucket.websiteDomain;
 export const originBucketWebsiteEndpoint = originBucket.websiteEndpoint;
 export const cloudFrontDomain = cdn.domainName;
 export const websiteDomain = config.websiteDomain;
 export const originS3BucketName = originBucket.bucket;
-// export const bundlesS3BucketName = bundlesBucket.bucket;
