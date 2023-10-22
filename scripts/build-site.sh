@@ -30,7 +30,7 @@ if [ "$1" == "preview" ]; then
     GOGC=3 hugo --minify --buildFuture --templateMetrics -e "preview"
 else
     if [ "$DEPLOYMENT_ENVIRONMENT" == "testing" ]; then
-        export HUGO_BASEURL="https://www.pulumi-test.io"
+        # export HUGO_BASEURL="https://www.pulumi-test.io"
         GOGC=3 hugo --minify --buildFuture --templateMetrics -e "preview"
     else
         GOGC=3 hugo --minify --buildFuture --templateMetrics -e "production"

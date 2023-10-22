@@ -47,12 +47,12 @@ const config = {
     // of the `websiteDomain` rather than use the root of that zone.
     setRootRecord: stackConfig.get("setRootRecord") || undefined,
 
+    // the Pulumi AI stack to reference to route traffic to for `/ai` routes.
+    aiStack: stackConfig.get("aiStack"),
+
     // the registry stack to reference to route traffic to for `/registry` routes.
     registryStack: stackConfig.get("registryStack"),
 };
-
-const aiAppStack = new pulumi.StackReference('pulumi/pulumi-ai-app-infra/prod');
-const aiAppDomain = aiAppStack.requireOutput('aiAppDistributionDomain');
 
 // originBucketName is the name of the S3 bucket to use as the CloudFront origin for the
 // website. This bucket is presumed to exist prior to the Pulumi run; if it doesn't, this
@@ -115,31 +115,6 @@ const uploadsBucketAcl = new aws.s3.BucketAclV2("uploads-bucket-acl", {
     acl: aws.s3.PublicReadAcl,
 }, {
     dependsOn: [uploadsBucketPublicAccessBlock, uploadsBucketOwnershipControls],
-});
-
-const bundlesBucket = new aws.s3.Bucket("bundles-bucket", {
-    website: {
-        indexDocument: "index.html",
-    },
-});
-
-const bundlesBucketPublicAccessBlock = new aws.s3.BucketPublicAccessBlock("bundles-public-access-block", {
-    bucket: bundlesBucket.id,
-    blockPublicAcls: false,
-});
-
-const bundlesBucketOwnershipControls = new aws.s3.BucketOwnershipControls("bundles-bucket-ownership-controls", {
-    bucket: bundlesBucket.id,
-    rule: {
-        objectOwnership: "ObjectWriter"
-    }
-});
-
-const bundlesBucketAcl = new aws.s3.BucketAclV2("bundles-bucket-acl", {
-    bucket: bundlesBucket.id,
-    acl: aws.s3.PublicReadAcl,
-}, {
-    dependsOn: [bundlesBucketPublicAccessBlock, bundlesBucketOwnershipControls],
 });
 
 // Optionally create a fallback bucket for serving the website directly out of S3 when necessary.
@@ -285,8 +260,6 @@ const baseCacheBehavior = {
     responseHeadersPolicyId: "67f7725c-6f97-4210-82d7-5512b31e9d03", // SecurityHeadersPolicy
 };
 
-const bundleOrigins: aws.types.input.cloudfront.DistributionOrigin[] = [];
-const bundleBehaviors: aws.types.input.cloudfront.DistributionOrderedCacheBehavior[] = [];
 const registryOrigins: aws.types.input.cloudfront.DistributionOrigin[] = [];
 const registryBehaviors: aws.types.input.cloudfront.DistributionOrderedCacheBehavior[] = [];
 
@@ -294,56 +267,6 @@ if (config.registryStack) {
     const registryStack = new pulumi.StackReference(config.registryStack);
     const registryCDN = registryStack.getOutput("cloudFrontDomain");
 
-    bundleOrigins.push(
-        {
-            originId: bundlesBucket.arn,
-            domainName: bundlesBucket.websiteEndpoint,
-            customOriginConfig: {
-                originProtocolPolicy: "http-only",
-                httpPort: 80,
-                httpsPort: 443,
-                originSslProtocols: ["TLSv1.2"],
-            }
-        }
-    );
-    bundleBehaviors.push(
-        {
-            ...baseCacheBehavior,
-            targetOriginId: bundlesBucket.arn,
-            pathPattern: "/css/*",
-            defaultTtl: oneHour,
-            maxTtl: oneHour,
-            forwardedValues: {
-                cookies: {
-                    forward: "none",
-                },
-                queryString: false,
-                headers: [
-                    "Origin",
-                    "Access-Control-Request-Headers",
-                    "Access-Control-Request-Method",
-                ],
-            },
-        },
-        {
-            ...baseCacheBehavior,
-            targetOriginId: bundlesBucket.arn,
-            pathPattern: "/js/*",
-            defaultTtl: oneHour,
-            maxTtl: oneHour,
-            forwardedValues: {
-                cookies: {
-                    forward: "none",
-                },
-                queryString: false,
-                headers: [
-                    "Origin",
-                    "Access-Control-Request-Headers",
-                    "Access-Control-Request-Method",
-                ],
-            },
-        }
-    );
     registryOrigins.push(
         {
             originId: registryCDN,
@@ -384,186 +307,172 @@ if (config.redirectDomain) {
     domainAliases.push(config.redirectDomain);
 }
 
-// distributionArgs configures the CloudFront distribution. Relevant documentation:
-// https://www.terraform.io/docs/providers/aws/r/cloudfront_distribution.html
-// https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-web-values-specify.html
-// https://docs.aws.amazon.com/general/latest/gr/aws_service_limits.html#limits_cloudfront
-const distributionArgs: aws.cloudfront.DistributionArgs = {
-    enabled: true,
-
-    aliases: domainAliases,
-
-    // We only specify one origin for this distribution: the S3 content bucket.
-    origins: [
-        {
-            originId: originBucket.arn,
-            domainName: originBucket.websiteEndpoint,
-            customOriginConfig: {
-                // > If your Amazon S3 bucket is configured as a website endpoint, [like we have here] you must specify
-                // > HTTP Only. Amazon S3 doesn't support HTTPS connections in that configuration.
-                // tslint:disable-next-line: max-line-length
-                // https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-web-values-specify.html#DownloadDistValuesOriginProtocolPolicy
-                originProtocolPolicy: "http-only",
-                httpPort: 80,
-                httpsPort: 443,
-                originSslProtocols: ["TLSv1.2"],
-            },
+const origins = [
+    {
+        originId: originBucket.arn,
+        domainName: originBucket.websiteEndpoint,
+        customOriginConfig: {
+            // > If your Amazon S3 bucket is configured as a website endpoint, [like we have here] you must specify
+            // > HTTP Only. Amazon S3 doesn't support HTTPS connections in that configuration.
+            // tslint:disable-next-line: max-line-length
+            // https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-web-values-specify.html#DownloadDistValuesOriginProtocolPolicy
+            originProtocolPolicy: "http-only",
+            httpPort: 80,
+            httpsPort: 443,
+            originSslProtocols: ["TLSv1.2"],
         },
-        {
-            originId: uploadsBucket.arn,
-            domainName: uploadsBucket.websiteEndpoint,
-            customOriginConfig: {
-                originProtocolPolicy: "http-only",
-                httpPort: 80,
-                httpsPort: 443,
-                originSslProtocols: ["TLSv1.2"],
-            },
+    },
+    {
+        originId: uploadsBucket.arn,
+        domainName: uploadsBucket.websiteEndpoint,
+        customOriginConfig: {
+            originProtocolPolicy: "http-only",
+            httpPort: 80,
+            httpsPort: 443,
+            originSslProtocols: ["TLSv1.2"],
         },
-        {
-            originId: aiAppDomain,
-            domainName: aiAppDomain,
-            customOriginConfig: {
-                originProtocolPolicy: "https-only",
-                httpPort: 80,
-                httpsPort: 443,
-                originSslProtocols: ["TLSv1.2"],
-            },
-        },
-        ...registryOrigins,
-        // Add css bucket origins. These will be empty in the current production flow.
-        ...bundleOrigins
-    ],
+    },
+    ...registryOrigins,
+];
 
-    // Default object to serve when no path is given.
-    // https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/DefaultRootObject.html
-    defaultRootObject: "index.html",
-
-    defaultCacheBehavior: {
+const orderedCacheBehaviors = [
+    ...registryBehaviors,
+    {
         ...baseCacheBehavior,
+        targetOriginId: uploadsBucket.arn,
+        pathPattern: "/uploads/*",
+        defaultTtl: oneHour,
+        maxTtl: oneHour,
+        forwardedValues: {
+            cookies: {
+                forward: "none",
+            },
+            queryString: false,
+            headers: [
+                "Origin",
+                "Access-Control-Request-Headers",
+                "Access-Control-Request-Method",
+            ],
+        },
+    },
+    {
+        ...baseCacheBehavior,
+        targetOriginId: originBucket.arn,
+        pathPattern: "/*/rss.xml",
+        defaultTtl: oneHour,
+        maxTtl: oneHour,
+        forwardedValues: {
+            cookies: {
+                forward: "none",
+            },
+            queryString: false,
+            headers: [
+                "Origin",
+                "Access-Control-Request-Headers",
+                "Access-Control-Request-Method",
+            ],
+        },
+    },
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/css/bundle.*.css",
+        defaultTtl: oneYear,
+        maxTtl: oneYear,
+    },
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/css/marketing.*.css",
+        defaultTtl: oneYear,
+        maxTtl: oneYear,
+    },
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/js/bundle.min.*.js",
+        defaultTtl: oneYear,
+        maxTtl: oneYear,
+    },
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/js/search.min.*.js",
+        defaultTtl: oneYear,
+        maxTtl: oneYear,
+    },
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/fonts/*",
+        defaultTtl: oneHour,
+        maxTtl: oneHour,
+    },
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/icons/*",
+        defaultTtl: oneHour,
+        maxTtl: oneHour,
+    },
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/logos/*",
+        defaultTtl: oneHour,
+        maxTtl: oneHour,
+    },
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/images/home/*",
+        defaultTtl: oneHour,
+        maxTtl: oneHour,
     },
 
-    orderedCacheBehaviors: [
-        ...bundleBehaviors,
-        ...registryBehaviors,
-        {
-            ...baseCacheBehavior,
-            targetOriginId: uploadsBucket.arn,
-            pathPattern: "/uploads/*",
-            defaultTtl: oneHour,
-            maxTtl: oneHour,
-            forwardedValues: {
-                cookies: {
-                    forward: "none",
-                },
-                queryString: false,
-                headers: [
-                    "Origin",
-                    "Access-Control-Request-Headers",
-                    "Access-Control-Request-Method",
-                ],
-            },
-        },
-        {
-            ...baseCacheBehavior,
-            targetOriginId: originBucket.arn,
-            pathPattern: "/*/rss.xml",
-            defaultTtl: oneHour,
-            maxTtl: oneHour,
-            forwardedValues: {
-                cookies: {
-                    forward: "none",
-                },
-                queryString: false,
-                headers: [
-                    "Origin",
-                    "Access-Control-Request-Headers",
-                    "Access-Control-Request-Method",
-                ],
-            },
-        },
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/css/bundle.*.css",
-            defaultTtl: oneYear,
-            maxTtl: oneYear,
-        },
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/css/marketing.*.css",
-            defaultTtl: oneYear,
-            maxTtl: oneYear,
-        },
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/js/bundle.min.*.js",
-            defaultTtl: oneYear,
-            maxTtl: oneYear,
-        },
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/js/search.min.*.js",
-            defaultTtl: oneYear,
-            maxTtl: oneYear,
-        },
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/fonts/*",
-            defaultTtl: oneHour,
-            maxTtl: oneHour,
-        },
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/icons/*",
-            defaultTtl: oneHour,
-            maxTtl: oneHour,
-        },
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/logos/*",
-            defaultTtl: oneHour,
-            maxTtl: oneHour,
-        },
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/images/home/*",
-            defaultTtl: oneHour,
-            maxTtl: oneHour,
-        },
+    // Web-component loaders must not be cached, because the names of the files they
+    // load will change between builds.
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/js/components.js",
+        defaultTtl: 0,
+        minTtl: 0,
+        maxTtl: 0,
+    },
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/js/components/components.js",
+        defaultTtl: 0,
+        minTtl: 0,
+        maxTtl: 0,
+    },
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/js/components/components.esm.js",
+        defaultTtl: 0,
+        minTtl: 0,
+        maxTtl: 0,
+    },
 
-        // Web-component loaders must not be cached, because the names of the files they
-        // load will change between builds.
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/js/components.js",
-            defaultTtl: 0,
-            minTtl: 0,
-            maxTtl: 0,
-        },
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/js/components/components.js",
-            defaultTtl: 0,
-            minTtl: 0,
-            maxTtl: 0,
-        },
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/js/components/components.esm.js",
-            defaultTtl: 0,
-            minTtl: 0,
-            maxTtl: 0,
-        },
+    // Build-metadata files are never cached.
+    {
+        ...baseCacheBehavior,
+        pathPattern: "/metadata.json",
+        defaultTtl: 0,
+        minTtl: 0,
+        maxTtl: 0,
+    },
+];
 
-        // Build-metadata files are never cached.
-        {
-            ...baseCacheBehavior,
-            pathPattern: "/metadata.json",
-            defaultTtl: 0,
-            minTtl: 0,
-            maxTtl: 0,
-        },
+if (config.aiStack) {
+    const aiAppStack = new pulumi.StackReference("pulumi/pulumi-ai-app-infra/prod");
+    const aiAppDomain = aiAppStack.requireOutput("aiAppDistributionDomain");
 
-        // AI app with caching handled by the app
+    origins.push({
+        originId: aiAppDomain,
+        domainName: aiAppDomain,
+        customOriginConfig: {
+            originProtocolPolicy: "https-only",
+            httpPort: 80,
+            httpsPort: 443,
+            originSslProtocols: ["TLSv1.2"],
+        },
+    });
+
+    // AI app with caching handled by the app
+    orderedCacheBehaviors.push(
         {
             ...baseCacheBehavior,
             // allow all methods
@@ -590,7 +499,29 @@ const distributionArgs: aws.cloudfront.DistributionArgs = {
             cachePolicyId: cachingDisabledId,
             forwardedValues: undefined, // forwardedValues conflicts with cachePolicyId, so we unset it.
         }
-    ],
+    );
+}
+
+// distributionArgs configures the CloudFront distribution. Relevant documentation:
+// https://www.terraform.io/docs/providers/aws/r/cloudfront_distribution.html
+// https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-web-values-specify.html
+// https://docs.aws.amazon.com/general/latest/gr/aws_service_limits.html#limits_cloudfront
+const distributionArgs: aws.cloudfront.DistributionArgs = {
+    enabled: true,
+
+    aliases: domainAliases,
+
+    origins,
+
+    // Default object to serve when no path is given.
+    // https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/DefaultRootObject.html
+    defaultRootObject: "index.html",
+
+    defaultCacheBehavior: {
+        ...baseCacheBehavior,
+    },
+
+    orderedCacheBehaviors,
 
     // "All" is the most broad distribution, and also the most expensive.
     // "100" is the least broad, and also the least expensive.
@@ -693,4 +624,4 @@ export const originBucketWebsiteEndpoint = originBucket.websiteEndpoint;
 export const cloudFrontDomain = cdn.domainName;
 export const websiteDomain = config.websiteDomain;
 export const originS3BucketName = originBucket.bucket;
-export const bundlesS3BucketName = bundlesBucket.bucket;
+// export const bundlesS3BucketName = bundlesBucket.bucket;
