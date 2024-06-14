@@ -1,6 +1,6 @@
 jobs:
   automerge:
-    if: (github.event.pull_request.user.login == 'pulumi-bot') && (github.event.pull_request.head.repo.full_name == github.repository)
+    if: (github.event.pull_request.user.login == 'cnunciato') && (github.event.pull_request.head.repo.full_name == github.repository)
     name: Automerge Workflow
     runs-on: ubuntu-latest
     steps:
@@ -18,21 +18,21 @@ jobs:
           UPDATE_METHOD: rebase
         name: Automerge
         uses: pascalgn/automerge-action@v0.16.3
-  notify:
-    if: failure()
-    name: Send slack notification
-    runs-on: ubuntu-latest
-    needs: [automerge]
-    steps:
-      - name: Slack Notification
-        uses: docker://sholung/action-slack-notify:v2.3.0
-        env:
-          SLACK_CHANNEL: docs-ops
-          SLACK_COLOR: "#F54242"
-          SLACK_MESSAGE: "automerge failure in pulumi/docs repo :meow_sad:"
-          SLACK_USERNAME: docsbot
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_ICON: https://www.pulumi.com/logos/brand/avatar-on-white.png
+  # notify:
+  #   if: failure()
+  #   name: Send slack notification
+  #   runs-on: ubuntu-latest
+  #   needs: [automerge]
+  #   steps:
+  #     - name: Slack Notification
+  #       uses: docker://sholung/action-sdevlack-notify:v2.3.0
+  #       env:
+  #         SLACK_CHANNEL: docs-ops
+  #         SLACK_COLOR: "#F54242"
+  #         SLACK_MESSAGE: "automerge failure in pulumi/docs repo :meow_sad:"
+  #         SLACK_USERNAME: docsbot
+  #         SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+  #         SLACK_ICON: https://www.pulumi.com/logos/brand/avatar-on-white.png
 name: Automerge workflow
 "on":
   check_suite:
